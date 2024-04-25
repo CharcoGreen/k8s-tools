@@ -45,7 +45,7 @@ extract_resource(){
     
     for ob in $_object; do
         _logger "debug" "extract_resource" "${ob}" "${_resource}"
-        kubectl get "${_resource}" -n "${_namespace}" "${ob}" -o yaml > "${base_data_folder}/${_namespace}/${_resource}/${ob}.yaml"
+        ${_kubectl} get "${_resource}" -n "${_namespace}" "${ob}" -o yaml > "${base_data_folder}/${_namespace}/${_resource}/${ob}.yaml"
     done
 }
 
