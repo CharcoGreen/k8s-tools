@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# set -xe pipefail
+set +xe
 
+export logLevel="DEBUG"
 cwd=$(readlink -f "$(dirname "${0}")")
 data=$(date +%Y.%m.%d)
 base_data_folder="${cwd}/extract-${data}"
@@ -17,15 +18,17 @@ source helpers.sh
 # Return all namespaced resources
 get_namespaced_resources(){
 
-    # Use kubectl to get all namespaced resources and with no headers, 
+    _namespaced_bool="${1}"
+
+    # Use kubectl to get all namespaced resources and with no headers,
     # print name of the resource and short the output
-    namespaced_resources=("$(${_kubectl} api-resources --namespaced=true --no-headers=true | awk '{print $1}' | sort | uniq)")
+    namespaced_resources=("$(${_kubectl} api-resources --namespaced="${_namespaced_bool}" --no-headers=true -o name --sort-by=name )")
 }
 
 # Get all namespaces
 # Return all namespaces
 get_namespaces(){
-    
+
     # Use kubectl to get all namespaces and with no headers,
     namespaces=$(${_kubectl} get namespaces -ojsonpath='{.items[*].metadata.name}')
 }
@@ -36,16 +39,24 @@ get_namespaces(){
 # $3 - objects
 extract_resource(){
 
-    local _namespace="${1}"
+    local _namespace="${1:-default}"
     local _resource="${2}"
     local _object="${3}"
 
+    if ${_namespaced_bool}; then
+        local _end_data_folder="${base_data_folder}/${_namespace}/${_resource}"
+    else
+        local _end_data_folder="${base_data_folder}/cluster/${_resource}"
+    fi
+
     # Create a folder for each namespace and resource
-    mkdir -p "${base_data_folder}/${_namespace}/${_resource}"
-    
+    mkdir -p "${_end_data_folder}"
+
     for ob in $_object; do
-        _logger "debug" "extract_resource" "${ob}" "${_resource}"
-        ${_kubectl} get "${_resource}" -n "${_namespace}" "${ob}" -o yaml > "${base_data_folder}/${_namespace}/${_resource}/${ob}.yaml"
+
+        ${_kubectl} get "${_resource}" -n "${_namespace}" "${ob}" -o yaml > "${_end_data_folder}/${ob}.yaml"
+        _logger "DEBUG" "extract_resource,namespace=${_namespace}" "${ob}" "${_resource}"
+
     done
 }
 
@@ -55,35 +66,107 @@ extract_resource(){
 # Return all objects
 get_objects(){
 
-    local _namespace="${1}"
+    local _namespace="${1:-default}"
     local _resource="${2}"
     local _objects=""
 
     # Use kubectl to get all objects from a specific namespace and resource
     _objects=$(${_kubectl} get "${_resource}" -n "${_namespace}" -ojsonpath='{.items[*].metadata.name}' 2>/dev/null)
     if [ -n "${_objects}" ]; then
-        _logger "info" "get_object_function" "${_objects}" "${_resource}"
+        # extract_resource "$_namespace" "$_resource" "${_objects}"
+        _logger "INFO" "get_object_function" "${_objects}" "${_resource}"
         extract_resource "$_namespace" "$_resource" "${_objects}"
     else
-        _logger "debug" "get_objects_function_else" "No objects found" "${_resource}"
+        _logger "DEBUG" "get_objects_function_else" "No objects found" "${_resource}"
+
+    fi
+}
+
+main_for() {
+
+    # Loop through the namespaces and resources
+    if ${_namespaced_bool}; then
+
+        _logger "DEBUG" "namespaces" "Getting objects from all namespaces"
+
+        for ns in ${namespaces}; do
+
+            _logger "DEBUG" "namespace" "${ns}"
+            # Get all objects from a specific namespace and resource
+            for rs in ${namespaced_resources}; do
+                get_objects "${ns}" "${rs}"
+            done
+
+        done
+    else
+        # Loop through the resources
+        # Get all objects from a specific resource
+        for rs in ${namespaced_resources}; do
+            get_objects "" "${rs}"
+        done
     fi
 }
 
 # Main function
 # Call the functions
+# get_namespaced_resources "true"
 
-get_namespaced_resources
-get_namespaces
-get_objects "${namespaces}" "${namespaced_resources[@]}"
+run(){
 
-for ns in ${namespaces}; do
+    local check_bool="unknown"
+    _logger "INFO" "run" "Starting script"
+    
+    _logger "DEBUG" "run" "$@"
+    getops=$(getopt -o n: --long namespaced: -n 'get.api.resources.sh' -- "$@")    
+    
+    if [ $? != 0 ] ; then 
+        echo "Failed parsing options." >&2 
+        exit 1 
+    fi
+    
+    eval set -- "$getops"
 
-    _logger "debug" "namespace" "${ns}"
-    for rs in ${namespaced_resources}; do
-        
-        get_objects "${ns}" "${rs}"
+    _logger "DEBUG" "run" "$@"
+    while true; do
+        case "$1" in
+            -n|--namespaced)
+                case "$2" in
+                    true)
+                        check_bool="true"
+                        get_namespaces
+                        get_namespaced_resources "true"
+                        main_for
+                        ;;
+                    false)
+                        check_bool="false"
+                        get_namespaced_resources "false"
+                        main_for
+                        ;;
+                    all)
+                        check_bool="all"
+                        get_namespaces
+                        get_namespaced_resources "true"
+                        main_for
+                        get_namespaced_resources "false"
+                        main_for
+                        ;;
+                esac
+                shift 2
+                ;;
+            --)
+                shift
+                break
+                ;;
+            *)  
+                break
+                ;;
+        esac
     done
 
-done
+    if [ "${check_bool}" != "knwon" ] ; then
+        echo "Please use -n or --namespaced with true, false or all"
+        exit 1
+    fi
+}
 
-
+run "$@"
