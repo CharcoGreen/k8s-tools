@@ -25,7 +25,7 @@ _logger(){
     _log_message="$(date): loglevel=\"${_level^^}\"  type=\"${_type}\" message=\"${_message}\" resource=\"${_rs}\""
 
     # Print the log message
-    if [ $_level == "DEBUG" ] && [ $logLevel == "DEBUG" ]; then
+    if [[ $_level =~ DEBUG|INFO|WARNING ]] && [ $logLevel == "DEBUG" ]; then
         echo "${_log_message}"
     fi
 
