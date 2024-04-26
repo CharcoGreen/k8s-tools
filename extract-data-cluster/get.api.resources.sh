@@ -110,7 +110,7 @@ main_for() {
 # Main function
 # Call the functions
 # get_namespaced_resources "true"
-
+# TODO: Add kubeconfig as a parameter
 run(){
 
     local check_bool="unknown"
