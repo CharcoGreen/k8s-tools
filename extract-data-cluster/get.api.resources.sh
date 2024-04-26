@@ -4,8 +4,8 @@ set +xe
 
 export logLevel="DEBUG"
 cwd=$(readlink -f "$(dirname "${0}")")
-data=$(date +%Y.%m.%d)
-base_data_folder="${cwd}/extract-${data}"
+date=$(date +%Y.%m.%d)
+base_data_folder="${cwd}/extract-${date}"
 kubeconfig="${HOME}/.kube/config"
 
 # Set the Base kubectl command
